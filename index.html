@@ -68,6 +68,7 @@
   .toolbar label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
   #panelToggle{font-size:16px;padding:8px 10px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);}
   #panelToggle:hover{background:rgba(255,255,255,.25);}
+  #chartSelect{border:2px solid #000;}
 
   #roomWrap{flex:1;background:var(--card);padding:14px 16px;min-width:0;display:flex;flex-direction:column;min-height:0;}
   #roomHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;flex-shrink:0;}
@@ -165,11 +166,6 @@
 
 <div id="app">
   <div class="toolbar">
-    <div class="group">
-      <label>Your Name</label>
-      <input type="text" id="staffNameInput" placeholder="e.g. Mr. Loveday" oninput="saveStaffName()" onchange="saveStaffNameWithStatus()">
-    </div>
-
     <div class="group">
       <label>Seating Chart</label>
       <select id="chartSelect"></select>
@@ -273,7 +269,7 @@
     <h3 style="color:var(--text);font-size:18px;">How This App Works</h3>
 
     <h3>Seating Charts</h3>
-    <p>Create one entry per event/assembly (+ New Chart). Each chart has its own roster and seating — switching the dropdown swaps everything at once. <b>Rename Chart</b> changes the name only. <b>Delete Chart</b> removes it entirely, including its roster and seating — this can't be undone. Set <b>Your Name</b> once — it's saved automatically and appears on printed PDFs.</p>
+    <p>Create one entry per event/assembly (+ New Chart). Each chart has its own roster and seating — switching the dropdown swaps everything at once. <b>Rename Chart</b> changes the name only. <b>Delete Chart</b> removes it entirely, including its roster and seating — this can't be undone. The chart named "Default" loads automatically when you sign in.</p>
 
     <h3>Adding students</h3>
     <ul>
@@ -294,7 +290,7 @@
     <ul>
       <li>Drag a student chip from Unassigned onto any open seat.</li>
       <li><b>📌 Place Students:</b> fills every unlocked seat with unlocked students, using the <b>Order</b> dropdown (Random, or Alphabetical by first/last name).</li>
-      <li><b>Alternate gender</b> checkbox: interleaves boy/girl in seat order instead of pure random. Only applies when Order is Random.</li>
+      <li><b>Alternate gender</b> checkbox: interleaves boy/girl in seat order instead of pure random, and staggers which gender starts from one row to the next. Only applies when Order is Random.</li>
       <li><b>Clear Seats:</b> sends everyone back to Unassigned.</li>
     </ul>
 
@@ -308,7 +304,7 @@
     <div class="tip"><b>IEP / 504 seating:</b> place the student in the seat they need, click 🔒 to lock it, then hit 📌 Place Students as usual — everyone else fills in around them.</div>
 
     <h3>Exporting</h3>
-    <p>📄 Export PDF opens a picker for Landscape, Portrait, or Auto (Best Fit). It adds the chart name, your name, and the date/time as the header.</p>
+    <p>📄 Export PDF opens a picker for Landscape, Portrait, or Auto (Best Fit). It adds the chart name and the date/time as the header.</p>
 
     <div class="btnRow"><button onclick="closeHelpModal()">Got it</button></div>
   </div>
@@ -317,11 +313,7 @@
 </div><!-- /#app-content -->
 
 <script>
-/* ====== FIREBASE CONFIG ======
-   This needs to point at a NEW, separate Firebase project (not
-   bathroom-check-out or cca-device-manager) — see the setup steps
-   Claude gave you in chat. Replace every value below with the config
-   from that new project's "Add app" screen. */
+/* ====== FIREBASE CONFIG ====== */
 const firebaseConfig = {
   apiKey: "AIzaSyD9BOvHD1B9px_xmXwHBfE1b4VPTRolIPI",
   authDomain: "cca-bleacher-seating.firebaseapp.com",
@@ -412,38 +404,7 @@ let roster = {};
 let seating = {};   // seatId -> studentId
 let locks = {};     // seatId -> true
 let viewMode = 'clean';
-let staffName = '';
-
-function loadStaffName(){
-  try{
-    const cached = localStorage.getItem('bsc_staffName');
-    if(cached){
-      staffName = cached;
-      const input = document.getElementById('staffNameInput');
-      if(input) input.value = cached;
-    }
-  }catch(e){}
-  db.ref(`${ROOT}/settings/staffName`).on('value', snap=>{
-    const val = snap.val();
-    if(val !== null && val !== undefined && val !== ''){
-      staffName = val;
-      const input = document.getElementById('staffNameInput');
-      if(document.activeElement !== input) input.value = val;
-    }
-  }, err=>{
-    console.error('Staff name failed to load (check that "settings" is allowed in your database rules):', err);
-  });
-}
-
-function saveStaffName(){
-  const val = document.getElementById('staffNameInput').value.trim();
-  staffName = val;
-  try{ localStorage.setItem('bsc_staffName', val); }catch(e){}
-  db.ref(`${ROOT}/settings/staffName`).set(val).catch(err=>{
-    console.error('Staff name failed to save:', err);
-  });
-}
-function saveStaffNameWithStatus(){ saveStaffName(); setStatus('Name saved'); }
+let didAutoSelectDefault = false;
 
 function togglePanel(){
   const panel = document.querySelector('.toolbar');
@@ -476,7 +437,18 @@ function loadChartList(){
         opt.value = id; opt.textContent = c.name;
         sel.appendChild(opt);
       });
-    if(prev && charts[prev]) sel.value = prev;
+    if(prev && charts[prev]){
+      sel.value = prev;
+    } else if(!didAutoSelectDefault){
+      // Auto-load the chart named "Default" (case-insensitive) once, right
+      // after sign-in, so there's no manual step to see the current chart.
+      didAutoSelectDefault = true;
+      const defaultEntry = Object.entries(charts).find(([id, c]) => (c.name || '').trim().toLowerCase() === 'default');
+      if(defaultEntry){
+        sel.value = defaultEntry[0];
+        selectChart(defaultEntry[0]);
+      }
+    }
   });
 }
 
@@ -1001,9 +973,7 @@ function exportPDF(orientationChoice){
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(20);
     pdf.setTextColor(206, 31, 7);
-    const currentStaffName = document.getElementById('staffNameInput').value.trim();
-    const headerTitle = currentStaffName ? `${currentStaffName}: ${title}` : title;
-    pdf.text(headerTitle, pageW / 2, margin, { align: 'center' });
+    pdf.text(title, pageW / 2, margin, { align: 'center' });
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(11);
@@ -1027,8 +997,6 @@ function exportPDF(orientationChoice){
 
 /* ====== EXPOSE FUNCTIONS ====== */
 window.togglePanel = togglePanel;
-window.saveStaffName = saveStaffName;
-window.saveStaffNameWithStatus = saveStaffNameWithStatus;
 window.openNewChartModal = openNewChartModal;
 window.closeNewChartModal = closeNewChartModal;
 window.createNewChart = createNewChart;
@@ -1057,7 +1025,6 @@ window.dropOnSeat = dropOnSeat;
 
 /* ====== INIT ====== */
 loadChartList();
-loadStaffName();
 applyStoredPanelState();
 setViewMode('clean');
 
