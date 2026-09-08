@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bleacher Seating Chart Maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --red:#ce1f07;
+    --red-dark:#a31905;
+    --dark-gray-border:#cccccc;
+    --bg:#f4f5f7;
+    --card:#ffffff;
+    --border:#dfe2e6;
+    --text:#222;
+    --muted:#6b7280;
+  }
+  *{box-sizing:border-box;}
+  html, body{height:100%;}
+  body{font-family:'Montserrat',sans-serif;margin:0;background:var(--bg);color:var(--text);}
+  #app-content.shown{display:flex;flex-direction:column;height:100vh;}
+
+  /* ---------------- Sign-In Screen ---------------- */
+  #signin-screen{position:fixed;inset:0;background:var(--bg);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;}
+  .signin-card{background:var(--card);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);max-width:400px;width:100%;overflow:hidden;}
+  .signin-card-header{background:var(--red);padding:20px 24px;color:#fff;}
+  .signin-card-header h1{font-size:1.3rem;font-weight:800;margin:0;}
+  .signin-card-body{padding:24px;text-align:center;}
+  .signin-card-body p{font-size:.85rem;color:var(--muted);margin:0 0 20px;line-height:1.5;}
+  #login-form{text-align:left;}
+  #login-form label{display:block;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;margin-top:12px;}
+  #login-form input{width:100%;}
+  #login-btn{width:100%;margin-top:16px;}
+  .signin-error{margin-top:14px;padding:10px 14px;background:#fdeceb;border:1px solid var(--red);color:var(--red-dark);border-radius:6px;font-size:.82rem;display:none;}
+  .signin-note{margin-top:16px;font-size:.74rem;color:#999;}
+  #app-content{display:none;}
+
+  header{background:var(--red);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;flex-shrink:0;}
+  header h1{font-size:20px;font-weight:800;margin:0;letter-spacing:.5px;}
+  #saveStatus{font-size:12px;font-weight:600;opacity:.9;}
+  .header-right{display:flex;align-items:center;gap:14px;}
+  #user-badge{font-size:12px;opacity:.85;}
+  #signout-btn{font-size:11px;font-weight:700;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);padding:6px 12px;border-radius:6px;cursor:pointer;font-family:'Montserrat',sans-serif;text-transform:uppercase;letter-spacing:.05em;}
+  #signout-btn:hover{background:rgba(255,255,255,.25);}
+  .header-left{display:flex;align-items:center;gap:12px;}
+
+  select, input[type=text]{font-family:'Montserrat',sans-serif;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;}
+  button{font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;padding:8px 14px;border:none;border-radius:6px;background:var(--red);color:#fff;cursor:pointer;transition:background .15s;white-space:nowrap;}
+  button:hover{background:var(--red-dark);}
+  button.secondary{background:#fff;color:var(--red);border:1.5px solid var(--red);}
+  button.secondary:hover{background:#fdeceb;}
+  button.toggle.active{background:var(--red-dark);box-shadow:inset 0 0 0 2px #fff;}
+  #doneBtn{background:#1a7a3c;}
+  #doneBtn:hover{background:#145c2d;}
+
+  #app{display:flex;gap:0;padding:0;align-items:stretch;flex:1;min-height:0;}
+  .toolbar{background:var(--card);border-right:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:10px;align-items:stretch;width:250px;flex-shrink:0;overflow-y:auto;transition:width .15s,padding .15s,opacity .1s;}
+  .toolbar.collapsed{width:0;padding:14px 0;opacity:0;overflow:hidden;pointer-events:none;}
+  .toolbar .group{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px 10px;background:#fafafa;border:1px solid var(--border);border-radius:8px;}
+  .toolbar .group>*{width:100%;}
+  .toolbar label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+  #panelToggle{font-size:16px;padding:8px 10px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);}
+  #panelToggle:hover{background:rgba(255,255,255,.25);}
+
+  #roomWrap{flex:1;background:var(--card);padding:14px 16px;min-width:0;display:flex;flex-direction:column;min-height:0;}
+  #roomHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;flex-shrink:0;}
+  #roomHeader h2{font-size:15px;margin:0;color:var(--muted);}
+  #room{position:relative;width:100%;flex:1;min-height:300px;border:2px dashed var(--border);border-radius:8px;overflow:auto;padding:14px;background:#fdfdfd;}
+
+  .bleacherWrap{display:flex;align-items:stretch;gap:0;width:max-content;margin:0 auto;}
+  .section{border-right:5px solid #000;display:flex;flex-direction:column;}
+  .section:last-child{border-right:none;}
+  .section-header, .section-footer{font-weight:800;font-size:13px;text-align:center;padding:8px 4px;background:#fff;border:1px solid #000;}
+  .section-header{border-bottom:2px solid #000;}
+  .section-footer{border-top:2px solid #000;}
+  .section-grid{display:grid;}
+  .seat{
+    width:90px;min-height:56px;background:#fdfdfd;border:1.5px solid var(--dark-gray-border);
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font-family:Verdana,Geneva,sans-serif;font-size:13px;font-weight:450;line-height:1.2;
+    padding:4px;position:relative;
+  }
+  .seat.filled{border-style:solid;background:#ffffff;color:#111827;}
+  .seat.filled.male{background-color:#fcf0f0;border-color:#e5b3b3;color:#111827;}
+  .seat.filled.female{background-color:#f6f0fa;border-color:#d1beea;color:#111827;}
+  .seat.empty{color:var(--muted);font-weight:600;font-style:italic;cursor:default;}
+  .seat.dropTarget{background:#e5e7eb;box-shadow:inset 0 0 0 3px var(--dark-gray-border);}
+  .seat.locked{border-color:#d4a017 !important;background:#fff9e8 !important;color:#856404 !important;}
+  .seat[draggable="true"]{cursor:grab;}
+  .lockIcon{position:absolute;bottom:-9px;right:-6px;font-size:16px;cursor:pointer;background:#fff;border-radius:50%;line-height:1;padding:2px;z-index:2;}
+  .removeSeatIcon{position:absolute;top:-9px;left:-6px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--red);border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.25);z-index:2;}
+  .removeSeatIcon:hover{background:var(--red-dark);}
+  .removeSeatIcon svg{width:12px;height:12px;fill:#fff;}
+  #room.printing .removeSeatIcon,#room.printing .lockIcon{display:none;}
+  #room.printing .seat.locked{border-color:var(--dark-gray-border) !important;background:#fff !important;color:var(--text) !important;}
+  #room.printing .seat{cursor:default;font-size:14px;font-weight:700;}
+  #room.printing .seat.empty{font-size:12px;font-weight:600;}
+
+  #sidebar{width:250px;flex-shrink:0;background:var(--card);border-left:1px solid var(--border);padding:14px;display:flex;flex-direction:column;min-height:0;}
+  #sidebar h2{font-size:15px;margin:0 0 10px 0;color:var(--muted);}
+  #addStudentRow{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:10px;background:#fafafa;border:1px solid var(--border);border-radius:8px;}
+  #addStudentRow .addStudentFields{display:flex;gap:6px;}
+  #addStudentRow input{flex:1;}
+  #addStudentSubmitBtn{width:100%;font-size:13px;padding:9px 14px;}
+  #unassignedList{display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto;min-height:60px;padding:6px;border:1px dashed var(--border);border-radius:8px;}
+  #unassignedList.dropTarget{background:#fdeceb;}
+  .chip{background:#fff;border:1.5px solid var(--dark-gray-border);color:var(--text);border-radius:6px;padding:7px 10px;font-size:13px;font-weight:600;cursor:grab;display:flex;justify-content:space-between;align-items:center;gap:6px;}
+  .chip .del{cursor:pointer;color:#999;font-weight:800;}
+  .chip .del:hover{color:var(--red);}
+  #emptyMsg{font-size:12px;color:var(--muted);text-align:center;padding:10px;}
+
+  .modalBg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:100;}
+  .modalBg.show{display:flex;}
+  .modal{background:#fff;border-radius:10px;padding:20px;width:320px;box-shadow:0 8px 30px rgba(0,0,0,.2);}
+  .modal h3{margin-top:0;font-size:16px;}
+  .modal input{width:100%;margin-bottom:12px;}
+  .modal .btnRow{display:flex;justify-content:flex-end;gap:8px;}
+  .helpModal{width:600px;max-width:90vw;max-height:80vh;overflow-y:auto;}
+  .helpModal h3{color:var(--red);font-size:15px;margin:18px 0 6px 0;}
+  .helpModal h3:first-child{margin-top:0;}
+  .helpModal p, .helpModal li{font-size:13px;line-height:1.5;color:var(--text);}
+  .helpModal ul{margin:4px 0 4px 18px;padding:0;}
+  .helpModal .tip{background:#fdeceb;border-left:3px solid var(--red);padding:8px 10px;border-radius:6px;margin:8px 0;font-size:13px;}
+</style>
+</head>
+<body>
+
+<div id="signin-screen">
+  <div class="signin-card">
+    <div class="signin-card-header"><h1>Bleacher Seating Chart</h1></div>
+    <div class="signin-card-body">
+      <p>Sign in with your staff account. Your seating charts are private to your account.</p>
+      <form id="login-form">
+        <label for="login-email">Email</label>
+        <input type="text" id="login-email" placeholder="you@cornerstonek12.org" autocomplete="username">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+        <button type="submit" id="login-btn">Sign In</button>
+      </form>
+      <div class="signin-error" id="signin-error"></div>
+      <p class="signin-note">Contact Eric Loveday for an account or a password reset.</p>
+    </div>
+  </div>
+</div>
+
+<div id="app-content">
+<header>
+  <div class="header-left">
+    <button id="panelToggle" onclick="togglePanel()" title="Show/hide controls">☰</button>
+    <h1>Bleacher Seating Chart</h1>
+  </div>
+  <div class="header-right">
+    <span id="user-badge"></span>
+    <button id="signout-btn" onclick="doSignOut()">Sign Out</button>
+    <div id="saveStatus">Ready</div>
+  </div>
+</header>
+
+<div id="app">
+  <div class="toolbar">
+    <div class="group">
+      <label>Your Name</label>
+      <input type="text" id="staffNameInput" placeholder="e.g. Mr. Loveday" oninput="saveStaffName()" onchange="saveStaffNameWithStatus()">
+    </div>
+
+    <div class="group">
+      <label>Seating Chart</label>
+      <select id="chartSelect"></select>
+      <button class="secondary" onclick="openNewChartModal()">+ New Chart</button>
+      <button class="secondary" onclick="renameChart()">Rename Chart</button>
+      <button class="secondary" onclick="deleteChart()">Delete Chart</button>
+    </div>
+
+    <div class="group" data-mode="always">
+      <label>View</label>
+      <button class="toggle" id="modeStudentsBtn" onclick="setViewMode('editStudents')">🧑‍🤝‍🧑 Arrange Students</button>
+      <button id="doneBtn" onclick="setViewMode('clean')" style="display:none;">✅ Done</button>
+    </div>
+
+    <div class="group" data-mode="students">
+      <label>Roster</label>
+      <button class="secondary" onclick="document.getElementById('csvInput').click()">Upload CSV</button>
+      <button class="secondary" onclick="clearRoster()">Clear Roster</button>
+      <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="handleCSV(event)">
+      <span style="font-size:11px;color:var(--muted);">Format: Last, First, Gender(M/F) — one student per line. A header row is fine, it's skipped automatically. Uploading adds to the current roster — click Clear Roster first to fully replace it.</span>
+    </div>
+
+    <div class="group" data-mode="students">
+      <label>Place Students</label>
+      <button onclick="randomizeAll()">📌 Place Students</button>
+      <select id="placementOrderSelect" style="font-size:12px;">
+        <option value="random">Order: Random</option>
+        <option value="alphaFirst">Order: Alphabetical (First Name)</option>
+        <option value="alphaLast">Order: Alphabetical (Last Name)</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:4px;font-weight:600;">
+        <input type="checkbox" id="alternateGenderToggle" style="width:auto;" checked> Alternate gender
+      </label>
+      <button class="secondary" onclick="clearSeats()">Clear Seats</button>
+      <button class="secondary" onclick="clearAllLocks()">🔓 Clear All Locks</button>
+    </div>
+
+    <div class="group" data-mode="always">
+      <button class="secondary" onclick="openExportModal()">📄 Export PDF</button>
+    </div>
+
+    <div class="group" data-mode="always">
+      <button class="secondary" onclick="openHelpModal()">❓ Cheat Sheet</button>
+    </div>
+  </div>
+
+  <div id="roomWrap">
+    <div id="roomHeader">
+      <h2 id="roomTitle">No chart selected</h2>
+      <span style="font-size:12px;color:var(--muted)">Two modes: <b>Clean View</b> for a tidy read-only look, <b>Arrange Students</b> to place, drag, lock, and unlock students. The bleacher layout itself is fixed.</span>
+    </div>
+    <div id="room"></div>
+  </div>
+
+  <div id="sidebar">
+    <h2>Unassigned Students</h2>
+    <div id="addStudentRow">
+      <div class="addStudentFields">
+        <select id="newStudentGender" style="width:64px;flex:none;padding-right:4px;-webkit-appearance:menulist;appearance:menulist;">
+          <option value="">-</option>
+          <option value="M">M</option>
+          <option value="F">F</option>
+        </select>
+        <input type="text" id="newStudentName" placeholder="Add student name" onkeydown="if(event.key==='Enter'){addStudentManually();}">
+      </div>
+      <button id="addStudentSubmitBtn" onclick="addStudentManually()">+ Add Student</button>
+    </div>
+    <div id="unassignedList" ondragover="event.preventDefault(); this.classList.add('dropTarget')"
+         ondragleave="this.classList.remove('dropTarget')"
+         ondrop="dropOnUnassigned(event)"></div>
+  </div>
+</div>
+
+<div class="modalBg" id="newChartModal">
+  <div class="modal">
+    <h3>New Seating Chart</h3>
+    <input type="text" id="newChartName" placeholder="e.g. Fall Pep Rally">
+    <div class="btnRow">
+      <button class="secondary" onclick="closeNewChartModal()">Cancel</button>
+      <button onclick="createNewChart()">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="modalBg" id="exportModal">
+  <div class="modal" style="width:320px;">
+    <h3>Export PDF</h3>
+    <p style="font-size:12px;color:var(--muted);margin:-6px 0 10px 0;line-height:1.4;">Choose a page orientation, or let it auto-pick whichever fills the page best.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+      <button class="secondary" onclick="exportPDF('auto')" style="width:100%;">🔄 Auto (Best Fit)</button>
+      <button class="secondary" onclick="exportPDF('landscape')" style="width:100%;">🖥️ Landscape</button>
+      <button class="secondary" onclick="exportPDF('portrait')" style="width:100%;">📄 Portrait</button>
+    </div>
+    <div class="btnRow"><button class="secondary" onclick="closeExportModal()">Cancel</button></div>
+  </div>
+</div>
+
+<div class="modalBg" id="helpModal">
+  <div class="modal helpModal">
+    <h3 style="color:var(--text);font-size:18px;">How This App Works</h3>
+
+    <h3>Seating Charts</h3>
+    <p>Create one entry per event/assembly (+ New Chart). Each chart has its own roster and seating — switching the dropdown swaps everything at once. <b>Rename Chart</b> changes the name only. <b>Delete Chart</b> removes it entirely, including its roster and seating — this can't be undone. Set <b>Your Name</b> once — it's saved automatically and appears on printed PDFs.</p>
+
+    <h3>Adding students</h3>
+    <ul>
+      <li>Type a name and pick M/F/- (or leave blank), then click <b>+ Add Student</b> (or press Enter).</li>
+      <li><b>CSV upload format:</b> <code>Last, First, Gender(M/F)</code> — one student per line. A header row is detected and skipped automatically.</li>
+      <li>Click the <b>(M)/(F)/(-)</b> badge on any unassigned student's chip to change their gender anytime.</li>
+      <li>Click a student's <b>name</b> to rename them — this doesn't move or unseat them.</li>
+      <li><b>Clear Roster</b> removes every student at once (and clears seating too).</li>
+    </ul>
+
+    <h3>Two Views</h3>
+    <ul>
+      <li><b>👁 Clean View</b> (default) — a tidy, read-only look at the chart. Great for glancing at the layout or before printing.</li>
+      <li><b>🧑‍🤝‍🧑 Arrange Students</b> — shows the roster tools. Each filled seat shows lock/undo icons, and you can drag students from Unassigned onto open seats. The bleacher rows/sections themselves never move.</li>
+    </ul>
+
+    <h3>Seating students</h3>
+    <ul>
+      <li>Drag a student chip from Unassigned onto any open seat.</li>
+      <li><b>📌 Place Students:</b> fills every unlocked seat with unlocked students, using the <b>Order</b> dropdown (Random, or Alphabetical by first/last name).</li>
+      <li><b>Alternate gender</b> checkbox: interleaves boy/girl in seat order instead of pure random. Only applies when Order is Random.</li>
+      <li><b>Clear Seats:</b> sends everyone back to Unassigned.</li>
+    </ul>
+
+    <h3>Seat icons (in Arrange Students mode)</h3>
+    <ul>
+      <li><b>🔒 / 🔓</b> click to lock/unlock a seat. Locked seats — occupied or empty — are skipped by Place Students and protected from drag-and-drop.</li>
+      <li>The <b>undo arrow</b> on a filled, unlocked seat instantly sends that student back to Unassigned.</li>
+      <li><b>🔓 Clear All Locks</b> unlocks every seat at once without touching who's seated.</li>
+    </ul>
+
+    <div class="tip"><b>IEP / 504 seating:</b> place the student in the seat they need, click 🔒 to lock it, then hit 📌 Place Students as usual — everyone else fills in around them.</div>
+
+    <h3>Exporting</h3>
+    <p>📄 Export PDF opens a picker for Landscape, Portrait, or Auto (Best Fit). It adds the chart name, your name, and the date/time as the header.</p>
+
+    <div class="btnRow"><button onclick="closeHelpModal()">Got it</button></div>
+  </div>
+</div>
+
+</div><!-- /#app-content -->
+
+<script>
+/* ====== FIREBASE CONFIG ======
+   This needs to point at a NEW, separate Firebase project (not
+   bathroom-check-out or cca-device-manager) — see the setup steps
+   Claude gave you in chat. Replace every value below with the config
+   from that new project's "Add app" screen. */
+const firebaseConfig = {
+  apiKey: "REPLACE_WITH_YOUR_NEW_PROJECT_API_KEY",
+  authDomain: "REPLACE_WITH_YOUR_NEW_PROJECT.firebaseapp.com",
+  databaseURL: "https://REPLACE_WITH_YOUR_NEW_PROJECT-default-rtdb.firebaseio.com",
+  projectId: "REPLACE_WITH_YOUR_NEW_PROJECT",
+  storageBucket: "REPLACE_WITH_YOUR_NEW_PROJECT.firebasestorage.app",
+  messagingSenderId: "REPLACE_WITH_YOUR_SENDER_ID",
+  appId: "REPLACE_WITH_YOUR_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let ROOT = null;
+
+const signinScreen = document.getElementById('signin-screen');
+const appContent = document.getElementById('app-content');
+const signinError = document.getElementById('signin-error');
+const userBadge = document.getElementById('user-badge');
+
+function showSigninError(msg){
+  signinError.textContent = msg;
+  signinError.style.display = 'block';
+}
+
+document.getElementById('login-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  signinError.style.display = 'none';
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if(!email || !password){ showSigninError('Enter both email and password.'); return; }
+  firebase.auth().signInWithEmailAndPassword(email, password).catch(err => {
+    console.error(err);
+    showSigninError('Sign-in failed — check your email and password and try again.');
+  });
+});
+
+window.doSignOut = function(){ firebase.auth().signOut(); };
+
+let appStarted = false;
+
+firebase.auth().onAuthStateChanged((user) => {
+  if(!user){
+    signinScreen.style.display = 'flex';
+    appContent.classList.remove('shown');
+    return;
+  }
+  ROOT = "bleacherSeating/" + user.uid;
+  signinScreen.style.display = 'none';
+  appContent.classList.add('shown');
+  userBadge.textContent = user.email || '';
+  if(!appStarted){ appStarted = true; startApp(); }
+});
+
+function startApp(){
+
+/* ====== FIXED BLEACHER LAYOUT ======
+   Matches the gym's 2 / 4 / 4 / 2 column sections with 10 rows each.
+   Change ROWS or the "cols" values below if the real bleachers differ —
+   nothing else in the app needs to change. */
+const SECTIONS = [
+  {id:'s1', cols:2},
+  {id:'s2', cols:4},
+  {id:'s3', cols:4},
+  {id:'s4', cols:2}
+];
+const ROWS = 10;
+
+// Seats grouped by visual row spanning the WHOLE bleacher width (all four
+// sections combined, left to right), rows top to bottom. Used for "fill
+// front-to-back" placement and for staggering gender by row below.
+const ROWS_ARR = [];
+for(let r=0;r<ROWS;r++){
+  const rowSeats = [];
+  SECTIONS.forEach(sec=>{
+    for(let c=0;c<sec.cols;c++){
+      rowSeats.push(`${sec.id}_r${r}_c${c}`);
+    }
+  });
+  ROWS_ARR.push(rowSeats);
+}
+const SEAT_ORDER = ROWS_ARR.flat();
+
+function shuffleArr(arr){ return [...arr].sort(()=>Math.random()-0.5); }
+
+let currentChartId = null;
+let roster = {};
+let seating = {};   // seatId -> studentId
+let locks = {};     // seatId -> true
+let viewMode = 'clean';
+let staffName = '';
+
+function loadStaffName(){
+  try{
+    const cached = localStorage.getItem('bsc_staffName');
+    if(cached){
+      staffName = cached;
+      const input = document.getElementById('staffNameInput');
+      if(input) input.value = cached;
+    }
+  }catch(e){}
+  db.ref(`${ROOT}/settings/staffName`).on('value', snap=>{
+    const val = snap.val();
+    if(val !== null && val !== undefined && val !== ''){
+      staffName = val;
+      const input = document.getElementById('staffNameInput');
+      if(document.activeElement !== input) input.value = val;
+    }
+  }, err=>{
+    console.error('Staff name failed to load (check that "settings" is allowed in your database rules):', err);
+  });
+}
+
+function saveStaffName(){
+  const val = document.getElementById('staffNameInput').value.trim();
+  staffName = val;
+  try{ localStorage.setItem('bsc_staffName', val); }catch(e){}
+  db.ref(`${ROOT}/settings/staffName`).set(val).catch(err=>{
+    console.error('Staff name failed to save:', err);
+  });
+}
+function saveStaffNameWithStatus(){ saveStaffName(); setStatus('Name saved'); }
+
+function togglePanel(){
+  const panel = document.querySelector('.toolbar');
+  const collapsed = panel.classList.toggle('collapsed');
+  try{ localStorage.setItem('bsc_panelCollapsed', collapsed ? '1' : '0'); }catch(e){}
+}
+function applyStoredPanelState(){
+  let collapsed = false;
+  try{ collapsed = localStorage.getItem('bsc_panelCollapsed') === '1'; }catch(e){}
+  if(collapsed) document.querySelector('.toolbar').classList.add('collapsed');
+}
+
+function setStatus(msg){
+  document.getElementById('saveStatus').textContent = msg;
+  setTimeout(()=>{ document.getElementById('saveStatus').textContent = "Ready"; }, 1500);
+}
+function slugId(prefix){ return prefix + "_" + Math.random().toString(36).slice(2,9); }
+
+/* ====== CHART LIST ====== */
+function loadChartList(){
+  db.ref(`${ROOT}/charts`).on('value', snap => {
+    const charts = snap.val() || {};
+    const sel = document.getElementById('chartSelect');
+    const prev = currentChartId;
+    sel.innerHTML = '<option value="">-- select chart --</option>';
+    Object.entries(charts)
+      .sort((a,b) => a[1].name.localeCompare(b[1].name, undefined, {numeric:true, sensitivity:'base'}))
+      .forEach(([id,c])=>{
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = c.name;
+        sel.appendChild(opt);
+      });
+    if(prev && charts[prev]) sel.value = prev;
+  });
+}
+
+document.getElementById('chartSelect').addEventListener('change', (e)=>{ selectChart(e.target.value); });
+
+function selectChart(id){
+  currentChartId = id || null;
+  if(!currentChartId){
+    document.getElementById('roomTitle').textContent = "No chart selected";
+    document.getElementById('room').innerHTML = "";
+    document.getElementById('unassignedList').innerHTML = "";
+    return;
+  }
+  db.ref(`${ROOT}/charts/${currentChartId}/name`).once('value').then(s=>{
+    document.getElementById('roomTitle').textContent = s.val() || "Chart";
+  });
+  attachChartListeners();
+}
+
+function attachChartListeners(){
+  db.ref(`${ROOT}/rosters/${currentChartId}`).on('value', snap=>{ roster = snap.val() || {}; render(); });
+  db.ref(`${ROOT}/seating/${currentChartId}`).on('value', snap=>{ seating = snap.val() || {}; render(); });
+  db.ref(`${ROOT}/locks/${currentChartId}`).on('value', snap=>{ locks = snap.val() || {}; render(); });
+}
+
+function openNewChartModal(){ document.getElementById('newChartModal').classList.add('show'); }
+function closeNewChartModal(){ document.getElementById('newChartModal').classList.remove('show'); }
+function openHelpModal(){ document.getElementById('helpModal').classList.add('show'); }
+function closeHelpModal(){ document.getElementById('helpModal').classList.remove('show'); }
+
+function createNewChart(){
+  const name = document.getElementById('newChartName').value.trim();
+  if(!name) return;
+  const id = slugId('chart');
+  db.ref(`${ROOT}/charts/${id}`).set({name, createdAt: Date.now()});
+  document.getElementById('newChartName').value = '';
+  closeNewChartModal();
+  document.getElementById('chartSelect').value = id;
+  selectChart(id);
+}
+
+function renameChart(){
+  if(!currentChartId){ alert('Select a chart first.'); return; }
+  const sel = document.getElementById('chartSelect');
+  const currentName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const newName = prompt('New name for this chart:', currentName);
+  if(!newName || !newName.trim() || newName.trim() === currentName) return;
+  db.ref(`${ROOT}/charts/${currentChartId}/name`).set(newName.trim());
+  document.getElementById('roomTitle').textContent = newName.trim();
+  setStatus('Chart renamed');
+}
+
+function deleteChart(){
+  if(!currentChartId){ alert('Select a chart first.'); return; }
+  const sel = document.getElementById('chartSelect');
+  const chartName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : 'this chart';
+  if(!confirm(`Delete "${chartName}" entirely? This removes its roster and seating. This can't be undone.`)) return;
+  const idToDelete = currentChartId;
+  db.ref(`${ROOT}/charts/${idToDelete}`).remove();
+  db.ref(`${ROOT}/rosters/${idToDelete}`).remove();
+  db.ref(`${ROOT}/seating/${idToDelete}`).remove();
+  db.ref(`${ROOT}/locks/${idToDelete}`).remove();
+  currentChartId = null;
+  document.getElementById('roomTitle').textContent = "No chart selected";
+  document.getElementById('room').innerHTML = "";
+  document.getElementById('unassignedList').innerHTML = "";
+  setStatus('Chart deleted');
+}
+
+/* ====== ROSTER ====== */
+function addStudentManually(){
+  if(!currentChartId){ alert('Select or create a chart first.'); return; }
+  const input = document.getElementById('newStudentName');
+  const genderSelect = document.getElementById('newStudentGender');
+  const name = input.value.trim();
+  if(!name){ input.focus(); return; }
+  const id = slugId('stu');
+  db.ref(`${ROOT}/rosters/${currentChartId}/${id}`).set({name, gender: genderSelect.value || ""});
+  input.value = '';
+  genderSelect.value = '';
+  input.focus();
+  setStatus('Student added');
+}
+
+function removeStudent(id){
+  if(!confirm('Remove this student from the roster?')) return;
+  db.ref(`${ROOT}/rosters/${currentChartId}/${id}`).remove();
+  Object.entries(seating).forEach(([seatId, stuId])=>{
+    if(stuId === id){
+      db.ref(`${ROOT}/seating/${currentChartId}/${seatId}`).remove();
+      db.ref(`${ROOT}/locks/${currentChartId}/${seatId}`).remove();
+    }
+  });
+}
+
+function clearRoster(){
+  if(!currentChartId){ alert('Select or create a chart first.'); return; }
+  const count = Object.keys(roster).length;
+  if(count === 0){ alert('This chart has no students yet.'); return; }
+  if(!confirm(`Remove all ${count} students from this chart's roster? This also clears seating. This can't be undone.`)) return;
+  db.ref(`${ROOT}/rosters/${currentChartId}`).remove();
+  db.ref(`${ROOT}/seating/${currentChartId}`).remove();
+  db.ref(`${ROOT}/locks/${currentChartId}`).remove();
+  setStatus('Roster cleared');
+}
+
+function handleCSV(event){
+  if(!currentChartId){ alert('Select or create a chart first.'); event.target.value=''; return; }
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    const lines = e.target.result.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    const updates = {};
+    lines.forEach((line, idx)=>{
+      let clean = line.replace(/["']/g,'');
+      const lower = clean.toLowerCase();
+      if(idx === 0 && (lower.includes('last') || lower.includes('first') || lower.includes('name') || lower.includes('gender') || lower.includes('student'))){ return; }
+      let name, gender = "";
+      const parts = clean.split(',').map(s=>s.trim());
+      if(parts.length >= 3){
+        name = `${parts[1]} ${parts[0]}`;
+        const g = parts[2].toUpperCase();
+        gender = g.startsWith('M') ? 'M' : g.startsWith('F') ? 'F' : '';
+      } else if(parts.length === 2){
+        name = `${parts[1]} ${parts[0]}`;
+      } else {
+        name = parts[0];
+      }
+      if(name){
+        const id = slugId('stu');
+        updates[id] = {name, gender};
+      }
+    });
+    db.ref(`${ROOT}/rosters/${currentChartId}`).update(updates);
+    setStatus('Roster imported');
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+/* ====== VIEW MODE ====== */
+function setViewMode(mode){
+  viewMode = mode;
+  document.getElementById('modeStudentsBtn').classList.toggle('active', mode === 'editStudents');
+  document.getElementById('doneBtn').style.display = (mode === 'clean') ? 'none' : 'block';
+  document.querySelectorAll('.toolbar .group[data-mode]').forEach(group=>{
+    const groupMode = group.dataset.mode;
+    const visible = groupMode === 'always' || (groupMode === 'students' && mode === 'editStudents');
+    group.style.display = visible ? 'flex' : 'none';
+  });
+  render();
+}
+
+/* ====== SEATING ACTIONS ====== */
+function randomizeAll(){
+  if(!currentChartId) return;
+
+  const placementOrder = document.getElementById('placementOrderSelect').value;
+  const alternate = placementOrder === 'random' && document.getElementById('alternateGenderToggle').checked;
+
+  const lastNameOf = (name)=>{
+    const parts = (name || '').trim().split(/\s+/);
+    return parts[parts.length - 1] || '';
+  };
+
+  // Open seats grouped by row (so staggering below can work row-by-row),
+  // with locked seats removed from each row's list.
+  const openRows = ROWS_ARR.map(rowSeats => rowSeats.filter(seatId => !locks[seatId]));
+  const openSeatIds = openRows.flat();
+  if(openSeatIds.length === 0){ alert('Every seat is locked — unlock at least one to place students.'); return; }
+
+  const lockedStudentIds = new Set();
+  Object.entries(seating).forEach(([seatId, sid])=>{
+    if(sid && locks[seatId]) lockedStudentIds.add(sid);
+  });
+  const pool = Object.keys(roster).filter(id => !lockedStudentIds.has(id));
+
+  // Seats that stay as-is because they're locked.
+  const newSeating = {};
+  Object.entries(seating).forEach(([seatId, sid])=>{
+    if(sid && locks[seatId]) newSeating[seatId] = sid;
+  });
+
+  if(alternate){
+    // Staggered gender: within a row, seats alternate boy/girl; which
+    // gender starts flips from one row to the next, so the same gender
+    // doesn't line up in the same column all the way down.
+    const mPool = shuffleArr(pool.filter(id => (roster[id].gender||'') === 'M'));
+    const fPool = shuffleArr(pool.filter(id => (roster[id].gender||'') === 'F'));
+    const oPool = shuffleArr(pool.filter(id => !(roster[id].gender === 'M' || roster[id].gender === 'F')));
+
+    openRows.forEach((rowSeats, rowIndex)=>{
+      if(rowSeats.length === 0) return;
+      let nextGender = (rowIndex % 2 === 0) ? 'M' : 'F';
+      rowSeats.forEach(seatId=>{
+        let studentId;
+        if(nextGender === 'M'){
+          studentId = mPool.shift() || fPool.shift() || oPool.shift();
+        } else {
+          studentId = fPool.shift() || mPool.shift() || oPool.shift();
+        }
+        if(studentId) newSeating[seatId] = studentId;
+        nextGender = nextGender === 'M' ? 'F' : 'M';
+      });
+    });
+  } else {
+    let ordered;
+    if(placementOrder === 'alphaFirst'){
+      ordered = [...pool].sort((a,b)=> roster[a].name.localeCompare(roster[b].name, undefined, {sensitivity:'base'}));
+    } else if(placementOrder === 'alphaLast'){
+      ordered = [...pool].sort((a,b)=> lastNameOf(roster[a].name).localeCompare(lastNameOf(roster[b].name), undefined, {sensitivity:'base'}));
+    } else {
+      ordered = shuffleArr(pool);
+    }
+    openSeatIds.forEach((seatId, i)=>{
+      if(ordered[i]) newSeating[seatId] = ordered[i];
+    });
+  }
+
+  db.ref(`${ROOT}/seating/${currentChartId}`).set(newSeating);
+  setStatus('Students placed');
+}
+
+function toggleLock(seatId){
+  if(locks[seatId]){
+    db.ref(`${ROOT}/locks/${currentChartId}/${seatId}`).remove();
+  } else {
+    db.ref(`${ROOT}/locks/${currentChartId}/${seatId}`).set(true);
+  }
+}
+
+function cycleGender(id){
+  const order = ['', 'M', 'F'];
+  const current = (roster[id] && roster[id].gender) || '';
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  db.ref(`${ROOT}/rosters/${currentChartId}/${id}/gender`).set(next);
+}
+
+function renameStudent(id){
+  const current = (roster[id] && roster[id].name) || '';
+  const newName = prompt('New name for this student:', current);
+  if(!newName || !newName.trim() || newName.trim() === current) return;
+  db.ref(`${ROOT}/rosters/${currentChartId}/${id}/name`).set(newName.trim());
+  setStatus('Name updated');
+}
+
+function clearSeats(){
+  if(!currentChartId) return;
+  if(!confirm('Send all students back to Unassigned?')) return;
+  db.ref(`${ROOT}/seating/${currentChartId}`).remove();
+  db.ref(`${ROOT}/locks/${currentChartId}`).remove();
+}
+
+function clearAllLocks(){
+  if(!currentChartId) return;
+  const lockCount = Object.keys(locks).length;
+  if(lockCount === 0){ alert('No seats are currently locked.'); return; }
+  if(!confirm(`Unlock all ${lockCount} locked seat(s)? Any students in them stay seated — this only removes the lock.`)) return;
+  db.ref(`${ROOT}/locks/${currentChartId}`).remove();
+  setStatus('Locks cleared');
+}
+
+function seatStudent(seatId, studentId){
+  const updates = {};
+  Object.entries(seating).forEach(([sId, sid])=>{
+    if(sid === studentId) updates[sId] = null;
+  });
+  updates[seatId] = studentId;
+  db.ref(`${ROOT}/seating/${currentChartId}`).update(updates);
+}
+
+function unseatSlot(seatId){
+  db.ref(`${ROOT}/seating/${currentChartId}/${seatId}`).remove();
+  db.ref(`${ROOT}/locks/${currentChartId}/${seatId}`).remove();
+}
+
+/* ====== DRAG & DROP ====== */
+function dropOnSeat(event, seatId){
+  event.preventDefault();
+  event.currentTarget.classList.remove('dropTarget');
+  const studentId = event.dataTransfer.getData('text/student');
+  if(studentId) seatStudent(seatId, studentId);
+}
+
+function dropOnUnassigned(event){
+  event.preventDefault();
+  document.getElementById('unassignedList').classList.remove('dropTarget');
+  const seatId = event.dataTransfer.getData('text/seat-id');
+  if(seatId) unseatSlot(seatId);
+}
+
+/* ====== RENDER ====== */
+function render(){
+  const room = document.getElementById('room');
+  room.innerHTML = '';
+  if(!currentChartId) return;
+
+  const seatedIds = new Set(Object.values(seating).filter(Boolean));
+  const editingStudents = viewMode === 'editStudents';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'bleacherWrap';
+
+  SECTIONS.forEach(sec=>{
+    const sectionEl = document.createElement('div');
+    sectionEl.className = 'section';
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    header.style.gridColumn = `span ${sec.cols}`;
+    header.textContent = 'Top of Bleachers';
+
+    const grid = document.createElement('div');
+    grid.className = 'section-grid';
+    grid.style.gridTemplateColumns = `repeat(${sec.cols}, 90px)`;
+
+    grid.appendChild(header);
+
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<sec.cols;c++){
+        const seatId = `${sec.id}_r${r}_c${c}`;
+        const studentId = seating[seatId] || null;
+        const isLocked = !!locks[seatId];
+        const gender = studentId && roster[studentId] ? roster[studentId].gender : '';
+        const genderClass = gender === 'M' ? ' male' : (gender === 'F' ? ' female' : '');
+
+        const seat = document.createElement('div');
+        seat.className = 'seat' + (studentId ? ' filled' : ' empty') + genderClass + (isLocked ? ' locked' : '');
+
+        const label = document.createElement('span');
+        label.textContent = studentId && roster[studentId] ? roster[studentId].name : '';
+        if(studentId && editingStudents){
+          label.style.cursor = 'pointer';
+          label.title = 'Click to rename this student';
+          label.onclick = (e)=>{ e.stopPropagation(); renameStudent(studentId); };
+        }
+        seat.appendChild(label);
+
+        if(editingStudents){
+          const lockIcon = document.createElement('span');
+          lockIcon.className = 'lockIcon';
+          lockIcon.textContent = isLocked ? '🔒' : '🔓';
+          lockIcon.title = isLocked ? 'Unlock this seat' : 'Lock this seat in place';
+          lockIcon.onclick = (e)=>{ e.stopPropagation(); toggleLock(seatId); };
+          seat.appendChild(lockIcon);
+
+          if(studentId && !isLocked){
+            const removeIcon = document.createElement('span');
+            removeIcon.className = 'removeSeatIcon';
+            removeIcon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>';
+            removeIcon.title = 'Send this student back to Unassigned';
+            removeIcon.onclick = (e)=>{ e.stopPropagation(); unseatSlot(seatId); };
+            seat.appendChild(removeIcon);
+          }
+
+          if(!isLocked){
+            seat.ondragover = (e)=>{ e.preventDefault(); seat.classList.add('dropTarget'); };
+            seat.ondragleave = ()=> seat.classList.remove('dropTarget');
+            seat.ondrop = (e)=> dropOnSeat(e, seatId);
+            if(studentId){
+              seat.draggable = true;
+              seat.ondragstart = (e)=>{
+                e.dataTransfer.setData('text/student', studentId);
+                e.dataTransfer.setData('text/seat-id', seatId);
+              };
+            }
+          }
+        }
+
+        grid.appendChild(seat);
+      }
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'section-footer';
+    footer.style.gridColumn = `span ${sec.cols}`;
+    footer.textContent = 'Gym Floor';
+    grid.appendChild(footer);
+
+    sectionEl.appendChild(grid);
+    wrap.appendChild(sectionEl);
+  });
+
+  room.appendChild(wrap);
+
+  const list = document.getElementById('unassignedList');
+  list.innerHTML = '';
+  const unassigned = Object.entries(roster)
+    .filter(([id])=>!seatedIds.has(id))
+    .sort((a,b)=> a[1].name.localeCompare(b[1].name, undefined, {sensitivity:'base'}));
+  if(unassigned.length === 0){
+    list.innerHTML = '<div id="emptyMsg">Everyone is seated 🎉</div>';
+  }
+  unassigned.forEach(([id, stu])=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.draggable = true;
+    chip.ondragstart = (e)=>{
+      e.dataTransfer.setData('text/student', id);
+      e.dataTransfer.setData('text/seat-id', '');
+    };
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = stu.name;
+    nameSpan.style.cursor = 'pointer';
+    nameSpan.title = 'Click to rename this student';
+    nameSpan.onclick = (e)=>{ e.stopPropagation(); renameStudent(id); };
+    const genderBadge = document.createElement('span');
+    genderBadge.textContent = stu.gender ? `(${stu.gender})` : '(-)';
+    genderBadge.title = 'Click to set gender (used for alternating placement)';
+    genderBadge.style.cursor = 'pointer';
+    genderBadge.style.color = 'var(--muted)';
+    genderBadge.style.fontSize = '11px';
+    genderBadge.onclick = ()=> cycleGender(id);
+    const del = document.createElement('span');
+    del.className = 'del';
+    del.textContent = '×';
+    del.onclick = ()=> removeStudent(id);
+    chip.appendChild(nameSpan);
+    chip.appendChild(genderBadge);
+    chip.appendChild(del);
+    list.appendChild(chip);
+  });
+}
+
+/* ====== EXPORT PDF ====== */
+function openExportModal(){
+  if(!currentChartId){ alert('Select a chart first.'); return; }
+  document.getElementById('exportModal').classList.add('show');
+}
+function closeExportModal(){ document.getElementById('exportModal').classList.remove('show'); }
+
+function exportPDF(orientationChoice){
+  orientationChoice = orientationChoice || 'auto';
+  closeExportModal();
+  if(!currentChartId){ alert('Select a chart first.'); return; }
+
+  const room = document.getElementById('room');
+  const title = document.getElementById('roomTitle').textContent;
+  const originalOverflow = room.style.overflow;
+  const originalHeight = room.style.height;
+  const originalWidth = room.style.width;
+
+  room.classList.add('printing');
+  room.style.overflow = 'visible';
+  room.style.width = room.scrollWidth + 'px';
+  room.style.height = room.scrollHeight + 'px';
+
+  setStatus('Building PDF...');
+
+  const roomRect = room.getBoundingClientRect();
+  const renderWidth = Math.ceil(roomRect.left + window.scrollX + room.scrollWidth) + 20;
+  const renderHeight = Math.ceil(roomRect.top + window.scrollY + room.scrollHeight) + 20;
+
+  html2canvas(room, {
+    backgroundColor: '#ffffff',
+    scale: 2,
+    windowWidth: renderWidth,
+    windowHeight: renderHeight
+  }).then(canvas => {
+    room.classList.remove('printing');
+    room.style.overflow = originalOverflow;
+    room.style.width = originalWidth;
+    room.style.height = originalHeight;
+
+    const margin = 30;
+    const headerSpace = 52;
+    const origW = canvas.width / 2;
+    const origH = canvas.height / 2;
+
+    const landscapeW = 792, landscapeH = 612;
+    const portraitW = 612, portraitH = 792;
+
+    let useRotated = false;
+    let pageW, pageH, pdfOrientation;
+
+    if(orientationChoice === 'landscape'){
+      pageW = landscapeW; pageH = landscapeH; pdfOrientation = 'landscape';
+    } else if(orientationChoice === 'portrait'){
+      pageW = portraitW; pageH = portraitH; pdfOrientation = 'portrait';
+    } else {
+      const scaleLandscape = Math.min((landscapeW - margin*2) / origW, (landscapeH - margin*2 - headerSpace) / origH);
+      const scalePortraitRotated = Math.min((portraitW - margin*2) / origH, (portraitH - margin*2 - headerSpace) / origW);
+      useRotated = scalePortraitRotated > scaleLandscape;
+      pageW = useRotated ? portraitW : landscapeW;
+      pageH = useRotated ? portraitH : landscapeH;
+      pdfOrientation = useRotated ? 'portrait' : 'landscape';
+    }
+
+    let sourceCanvas = canvas;
+    let nativeImgW = origW, nativeImgH = origH;
+
+    if(useRotated){
+      const rotated = document.createElement('canvas');
+      rotated.width = canvas.height;
+      rotated.height = canvas.width;
+      const rctx = rotated.getContext('2d');
+      rctx.translate(rotated.width, 0);
+      rctx.rotate(Math.PI / 2);
+      rctx.drawImage(canvas, 0, 0);
+      sourceCanvas = rotated;
+      nativeImgW = rotated.width / 2;
+      nativeImgH = rotated.height / 2;
+    }
+
+    const imgData = sourceCanvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+
+    const availW = pageW - margin*2;
+    const availH = pageH - margin*2 - headerSpace;
+    const scale = Math.min(availW / nativeImgW, availH / nativeImgH);
+    const imgW = nativeImgW * scale;
+    const imgH = nativeImgH * scale;
+    const imgX = margin + (availW - imgW) / 2;
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+    const timeStr = now.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+
+    const pdf = new jsPDF({ orientation: pdfOrientation, unit: 'pt', format: 'letter' });
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(20);
+    pdf.setTextColor(206, 31, 7);
+    const currentStaffName = document.getElementById('staffNameInput').value.trim();
+    const headerTitle = currentStaffName ? `${currentStaffName}: ${title}` : title;
+    pdf.text(headerTitle, pageW / 2, margin, { align: 'center' });
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(11);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(`${dateStr} ${timeStr}`, pageW / 2, margin + 16, { align: 'center' });
+
+    pdf.addImage(imgData, 'PNG', imgX, margin + 32, imgW, imgH);
+
+    const stamp = now.toISOString().slice(0,16).replace('T','_').replace(':','-');
+    const fileName = title.replace(/[^a-z0-9]+/gi, '_') + '_bleacher_chart_' + stamp + '.pdf';
+    pdf.save(fileName);
+    setStatus('PDF saved');
+  }).catch(err => {
+    room.classList.remove('printing');
+    room.style.overflow = originalOverflow;
+    room.style.width = originalWidth;
+    room.style.height = originalHeight;
+    alert('Export failed: ' + err.message);
+  });
+}
+
+/* ====== EXPOSE FUNCTIONS ====== */
+window.togglePanel = togglePanel;
+window.saveStaffName = saveStaffName;
+window.saveStaffNameWithStatus = saveStaffNameWithStatus;
+window.openNewChartModal = openNewChartModal;
+window.closeNewChartModal = closeNewChartModal;
+window.createNewChart = createNewChart;
+window.renameChart = renameChart;
+window.deleteChart = deleteChart;
+window.setViewMode = setViewMode;
+window.handleCSV = handleCSV;
+window.clearRoster = clearRoster;
+window.randomizeAll = randomizeAll;
+window.clearSeats = clearSeats;
+window.clearAllLocks = clearAllLocks;
+window.openExportModal = openExportModal;
+window.closeExportModal = closeExportModal;
+window.exportPDF = exportPDF;
+window.openHelpModal = openHelpModal;
+window.closeHelpModal = closeHelpModal;
+window.addStudentManually = addStudentManually;
+window.dropOnUnassigned = dropOnUnassigned;
+window.toggleLock = toggleLock;
+window.cycleGender = cycleGender;
+window.renameStudent = renameStudent;
+window.removeStudent = removeStudent;
+window.unseatSlot = unseatSlot;
+window.seatStudent = seatStudent;
+window.dropOnSeat = dropOnSeat;
+
+/* ====== INIT ====== */
+loadChartList();
+loadStaffName();
+applyStoredPanelState();
+setViewMode('clean');
+
+}
+</script>
+</body>
+</html>
