@@ -971,7 +971,7 @@ function exportPDF(orientationChoice){
     const pdf = new jsPDF({ orientation: pdfOrientation, unit: 'pt', format: 'letter' });
 
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(20);
+    pdf.setFontSize(18);
     pdf.setTextColor(206, 31, 7);
     pdf.text(title, pageW / 2, margin, { align: 'center' });
 
